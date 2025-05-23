@@ -89,28 +89,29 @@ stages:
               helmVersionToInstall: 'latest'
 
           - task: AzureCLI@2
-            displayName: 'Get AKS Credentials and Deploy'
-            inputs:
-              azureSubscription: '$(azureRmServiceConnection)'
-              scriptType: 'bash'
-              scriptLocation: 'inlineScript'
-              inlineScript: |
-                az aks get-credentials -n aks-bestrong -g $(azureResourceGroup)
+          displayName: 'Get AKS Credentials and Deploy'
+          inputs:
+            azureSubscription: '$(azureRmServiceConnection)'
+            scriptType: 'bash'
+            scriptLocation: 'inlineScript'
+            inlineScript: |
+              az aks get-credentials -n aks-bestrong -g $(azureResourceGroup)
 
-                echo "Installing ingress-nginx with LoadBalancer..."
-                helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-                helm repo update
-                helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-                  --namespace ingress-nginx \
-                  --create-namespace \
-                  --set controller.service.type=LoadBalancer
-                  --set controller.progressDeadlineSeconds=600
+              echo "Installing ingress-nginx with LoadBalancer..."
+              helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+              helm repo update
+              helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+                --namespace ingress-nginx \
+                --create-namespace \
+                --set controller.service.type=LoadBalancer \
+                --set controller.progressDeadlineSeconds=600
 
-                echo "Waiting for ingress-nginx controller to be ready..."
-                kubectl wait --namespace ingress-nginx \
-                  --for=condition=Ready pod \
-                  --selector=app.kubernetes.io/component=controller \
-                  --timeout=300s
+              echo "Waiting for ingress-nginx controller to be ready..."
+              kubectl wait --namespace ingress-nginx \
+                --for=condition=Ready pod \
+                --selector=app.kubernetes.io/component=controller \
+                --timeout=300s
+              # ... rest of the script remains unchanged
 
                 echo "Waiting for ingress-nginx admission webhook to be ready..."
                 kubectl wait --namespace ingress-nginx \
