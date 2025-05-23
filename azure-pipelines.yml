@@ -70,27 +70,6 @@ stages:
           CHART_PATH=$(Build.ArtifactStagingDirectory)/bestrong-$(Build.BuildId).tgz
           helm push $CHART_PATH oci://$(azureContainerRegistry).azurecr.io/helm
 
-
-
-                echo "Installing ingress-nginx with LoadBalancer..."
-                helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-                helm repo update
-                helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-                  --namespace ingress-nginx \
-                  --create-namespace \
-                  --set controller.service.type=LoadBalancer
-
-                echo "Installing cert-manager..."
-                helm repo add jetstack https://charts.jetstack.io
-                helm repo update
-                helm upgrade --install cert-manager jetstack/cert-manager \
-                  --namespace cert-manager \
-                  --create-namespace \
-                  --set installCRDs=true
-
-                echo "Applying Self-Signed ClusterIssuer..."
-                kubectl apply -f $(Build.SourcesDirectory)/Helm/config/letsencrypt-clusterissuer.yaml
-
                 
 - stage: Deploy
   displayName: 'Deploy to AKS'
