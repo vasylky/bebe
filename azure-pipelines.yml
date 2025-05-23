@@ -51,7 +51,6 @@ stages:
       submodules: true
       fetchDepth: 0
       persistCredentials: true
-  
     - task: HelmInstaller@1
       inputs:
         helmVersionToInstall: 'latest'
@@ -70,6 +69,7 @@ stages:
           CHART_PATH=$(Build.ArtifactStagingDirectory)/bestrong-api-$(Build.BuildId).tgz
           helm push $CHART_PATH oci://$(azureContainerRegistry).azurecr.io/helm
 
+# Stage 3: Deploy to AKS
 - stage: Deploy
   displayName: 'Deploy to AKS'
   dependsOn:
@@ -87,54 +87,70 @@ stages:
           - task: HelmInstaller@1
             inputs:
               helmVersionToInstall: 'latest'
-
           - task: AzureCLI@2
-          displayName: 'Get AKS Credentials and Deploy'
-          inputs:
-            azureSubscription: '$(azureRmServiceConnection)'
-            scriptType: 'bash'
-            scriptLocation: 'inlineScript'
-            inlineScript: |
-              az aks get-credentials -n aks-bestrong -g $(azureResourceGroup)
+            displayName: 'Get AKS Credentials and Deploy'
+            inputs:
+              azureSubscription: '$(azureRmServiceConnection)'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                # Get AKS credentials
+                az aks get-credentials -n aks-bestrong -g $(azureResourceGroup)
 
-              echo "Installing ingress-nginx with LoadBalancer..."
-              helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-              helm repo update
-              helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-                --namespace ingress-nginx \
-                --create-namespace \
-                --set controller.service.type=LoadBalancer \
-                --set controller.progressDeadlineSeconds=600
+                # Clean up existing ingress-nginx resources
+                echo "Cleaning up existing ingress-nginx resources..."
+                helm uninstall ingress-nginx --namespace ingress-nginx || true
+                kubectl delete namespace ingress-nginx --ignore-not-found
 
-              echo "Waiting for ingress-nginx controller to be ready..."
-              kubectl wait --namespace ingress-nginx \
-                --for=condition=Ready pod \
-                --selector=app.kubernetes.io/component=controller \
-                --timeout=300s
-              # ... rest of the script remains unchanged
+                # Install ingress-nginx with LoadBalancer
+                echo "Installing ingress-nginx with LoadBalancer..."
+                helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+                helm repo update
+                helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+                  --version 4.11.1 \
+                  --namespace ingress-nginx \
+                  --create-namespace \
+                  --set controller.service.type=LoadBalancer \
+                  --set controller.progressDeadlineSeconds=600 \
+                  --debug > helm-install.log 2>&1
+                cat helm-install.log
 
+                # Check ingress-nginx deployment status
+                echo "Checking ingress-nginx deployment..."
+                kubectl get deployment -n ingress-nginx ingress-nginx-controller
+                kubectl describe deployment -n ingress-nginx ingress-nginx-controller
+
+                # Wait for ingress-nginx controller pods to be ready
+                echo "Waiting for ingress-nginx controller to be ready..."
+                kubectl wait --namespace ingress-nginx \
+                  --for=condition=Ready pod \
+                  --selector=app.kubernetes.io/component=controller \
+                  --timeout=300s
+
+                # Wait for ingress-nginx deployment to be available
                 echo "Waiting for ingress-nginx admission webhook to be ready..."
                 kubectl wait --namespace ingress-nginx \
                   --for=condition=Available deployment \
                   --selector=app.kubernetes.io/component=controller \
                   --timeout=300s
 
-                # Additional wait to ensure webhook service endpoints are ready
+                # Verify admission webhook service endpoints
                 echo "Verifying admission webhook service has endpoints..."
-                for i in {1..30}; do
+                for i in {1..10}; do
                   ENDPOINTS=$(kubectl get endpoints -n ingress-nginx ingress-nginx-controller-admission -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || echo "")
                   if [ ! -z "$ENDPOINTS" ]; then
                     echo "Admission webhook endpoints are ready: $ENDPOINTS"
                     break
                   fi
-                  echo "Waiting for admission webhook endpoints... attempt $i/30"
-                  sleep 10
+                  echo "Waiting for admission webhook endpoints... attempt $i/10"
+                  sleep 5
                 done
 
-                # Verify the webhook is actually responding
+                # Verify webhook connectivity
                 echo "Testing admission webhook connectivity..."
                 kubectl get validatingwebhookconfigurations.admissionregistration.k8s.io ingress-nginx-admission
 
+                # Install cert-manager
                 echo "Installing cert-manager..."
                 helm repo add jetstack https://charts.jetstack.io
                 helm repo update
@@ -143,12 +159,14 @@ stages:
                   --create-namespace \
                   --set crds.enabled=true
 
+                # Wait for cert-manager to be ready
                 echo "Waiting for cert-manager to be ready..."
                 kubectl wait --namespace cert-manager \
                   --for=condition=Ready pod \
                   --selector=app.kubernetes.io/name=cert-manager \
                   --timeout=180s
 
+                # Apply letsencrypt-prod ClusterIssuer
                 echo "Applying letsencrypt-prod ClusterIssuer directly..."
                 kubectl apply -f - <<EOF
                 apiVersion: cert-manager.io/v1
@@ -162,18 +180,21 @@ stages:
                     privateKeySecretRef:
                       name: letsencrypt-prod
                     solvers:
-                      - http01:
-                          ingress:
-                            class: nginx
+                    - http01:
+                        ingress:
+                          class: nginx
                 EOF
 
+                # Log in to ACR
                 echo "Logging in to ACR..."
                 export HELM_EXPERIMENTAL_OCI=1
                 az acr login --name $(azureContainerRegistry)
 
+                # Pull Helm chart from ACR
                 echo "Pulling Helm chart from ACR..."
                 helm pull oci://$(azureContainerRegistry).azurecr.io/helm/bestrong-api:$(tag) --destination $(Agent.TempDirectory)
 
+                # Deploy BeStrong API
                 echo "Deploying BeStrong API with Helm..."
                 helm upgrade --install bestrong-api $(Agent.TempDirectory)/bestrong-api-$(tag).tgz \
                   --set image.repository=$(azureContainerRegistry).azurecr.io/$(imageRepository) \
