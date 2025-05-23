@@ -106,6 +106,13 @@ stages:
                   --create-namespace \
                   --set controller.service.type=LoadBalancer
 
+                  echo "Waiting for ingress-nginx controller to be ready..."
+                kubectl wait --namespace ingress-nginx \
+                  --for=condition=Ready pod \
+                  --selector=app.kubernetes.io/component=controller \
+                  --timeout=180s
+
+
                 echo "Installing cert-manager..."
                 helm repo add jetstack https://charts.jetstack.io
                 helm repo update
@@ -131,6 +138,8 @@ stages:
                           ingress:
                             class: nginx
                 EOF
+
+                
 
                 export HELM_EXPERIMENTAL_OCI=1
                 az acr login --name $(azureContainerRegistry)
