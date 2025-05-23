@@ -89,6 +89,7 @@ stages:
           - task: HelmInstaller@1
             inputs:
               helmVersionToInstall: 'latest'
+
           - task: AzureCLI@2
             displayName: 'Get AKS Credentials and Deploy'
             inputs:
@@ -106,12 +107,11 @@ stages:
                   --create-namespace \
                   --set controller.service.type=LoadBalancer
 
-                  echo "Waiting for ingress-nginx controller to be ready..."
+                echo "Waiting for ingress-nginx controller to be ready..."
                 kubectl wait --namespace ingress-nginx \
                   --for=condition=Ready pod \
                   --selector=app.kubernetes.io/component=controller \
                   --timeout=180s
-
 
                 echo "Installing cert-manager..."
                 helm repo add jetstack https://charts.jetstack.io
@@ -139,22 +139,21 @@ stages:
                             class: nginx
                 EOF
 
-                
-
+                echo "Logging in to ACR..."
                 export HELM_EXPERIMENTAL_OCI=1
                 az acr login --name $(azureContainerRegistry)
 
+                echo "Pulling Helm chart from ACR..."
                 helm pull oci://$(azureContainerRegistry).azurecr.io/helm/bestrong-api:$(tag) --destination $(Agent.TempDirectory)
 
+                echo "Deploying BeStrong API with Helm..."
                 helm upgrade --install bestrong-api $(Agent.TempDirectory)/bestrong-api-$(tag).tgz \
-                --set image.repository=$(azureContainerRegistry).azurecr.io/$(imageRepository) \
-                --set image.tag=$(tag) \
-                --set replicaCount=2 \
-                --set ingress.enabled=true \
-                --set ingress.host=kjk-s.xyz \
-                --set ingress.tls[0].hosts[0]=kjk-s.xyz \
-                --set ingress.tls[0].secretName=letsencrypt-prod-tls \
-                --set tls.issuer=letsencrypt-prod \
-                --namespace default
-
-         
+                  --set image.repository=$(azureContainerRegistry).azurecr.io/$(imageRepository) \
+                  --set image.tag=$(tag) \
+                  --set replicaCount=2 \
+                  --set ingress.enabled=true \
+                  --set ingress.host=kjk-s.xyz \
+                  --set ingress.tls[0].hosts[0]=kjk-s.xyz \
+                  --set ingress.tls[0].secretName=letsencrypt-prod-tls \
+                  --set tls.issuer=letsencrypt-prod \
+                  --namespace default
