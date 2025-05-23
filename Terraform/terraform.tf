@@ -72,20 +72,4 @@ resource "helm_release" "cert_manager" {
   }
 }
 
-resource "kubernetes_manifest" "selfsigned_issuer" {
-  manifest = {
-    apiVersion = "cert-manager.io/v1"
-    kind       = "ClusterIssuer"
-    metadata = {
-      name = "selfsigned-cluster-issuer"
-    }
-    spec = {
-      selfSigned = {}
-    }
-  }
-}
 
-output "kube_config" {
-  value     = azurerm_kubernetes_cluster.aks.kube_config_raw
-  sensitive = true
-}

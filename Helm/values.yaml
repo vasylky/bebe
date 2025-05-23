@@ -1,0 +1,28 @@
+replicaCount: 2
+
+image:
+  repository: bestrong.azurecr.io/bestrong-api
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/rewrite-target: /
+  hosts:
+    - host: kjk-s.xyz
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: bestrong-api-tls
+      hosts:
+        - kjk-s.xyz
+
+resources: {}

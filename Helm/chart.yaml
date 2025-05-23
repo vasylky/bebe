@@ -1,39 +1,6 @@
 apiVersion: v2
-name: bestrong
-version: 0.1.0
-description: A Helm chart for BeStrong ASP.NET Core Web API
-
+name: bestrong-api
+description: A Helm chart for deploying the BeStrong API
 type: application
-
-maintainers:
-  - name: Your Name
-    email: your@email.com
-
-values:
-  replicaCount: 2
-  image:
-    repository: youracr.azurecr.io/bestrong-api
-    tag: latest
-    pullPolicy: IfNotPresent
-
-  service:
-    type: ClusterIP
-    port: 80
-
-  ingress:
-    enabled: true
-    className: nginx
-    annotations:
-      cert-manager.io/cluster-issuer: selfsigned-cluster-issuer
-    hosts:
-      - host: bestrong.local
-        paths:
-          - path: /
-            pathType: ImplementationSpecific
-    tls:
-      - hosts:
-          - bestrong.local
-        secretName: bestrong-tls
-
-  environment:
-    ASPNETCORE_ENVIRONMENT: Production
+version: 1.0.0
+appVersion: "1.0"

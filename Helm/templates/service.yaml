@@ -1,13 +1,11 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "bestrong.fullname" . }}
-  labels:
-    app: {{ include "bestrong.name" . }}
+  name: {{ include "bestrong-api.fullname" . }}
 spec:
   type: {{ .Values.service.type }}
+  selector:
+    app: {{ include "bestrong-api.name" . }}
   ports:
     - port: {{ .Values.service.port }}
       targetPort: 80
-  selector:
-    app: {{ include "bestrong.name" . }}

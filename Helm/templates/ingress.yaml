@@ -1,16 +1,12 @@
-{{- if .Values.ingress.enabled -}}
+{{- if .Values.ingress.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "bestrong.fullname" . }}
+  name: {{ include "bestrong-api.fullname" . }}
   annotations:
-    {{- range $key, $value := .Values.ingress.annotations }}
-    {{ $key }}: {{ $value | quote }}
-    {{- end }}
+    {{- toYaml .Values.ingress.annotations | nindent 4 }}
 spec:
   ingressClassName: {{ .Values.ingress.className }}
-  tls:
-    {{- toYaml .Values.ingress.tls | nindent 4 }}
   rules:
     {{- range .Values.ingress.hosts }}
     - host: {{ .host }}
@@ -21,9 +17,11 @@ spec:
             pathType: {{ .pathType }}
             backend:
               service:
-                name: {{ include "bestrong.fullname" $ }}
+                name: {{ include "bestrong-api.fullname" $ }}
                 port:
                   number: {{ $.Values.service.port }}
           {{- end }}
     {{- end }}
+  tls:
+    {{- toYaml .Values.ingress.tls | nindent 4 }}
 {{- end }}
