@@ -104,6 +104,7 @@ stages:
                   --namespace ingress-nginx \
                   --create-namespace \
                   --set controller.service.type=LoadBalancer
+                  --set controller.progressDeadlineSeconds=600
 
                 echo "Waiting for ingress-nginx controller to be ready..."
                 kubectl wait --namespace ingress-nginx \
