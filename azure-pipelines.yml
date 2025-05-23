@@ -70,8 +70,6 @@ stages:
           CHART_PATH=$(Build.ArtifactStagingDirectory)/bestrong-api-$(Build.BuildId).tgz
           helm push $CHART_PATH oci://$(azureContainerRegistry).azurecr.io/helm
 
-
-                
 - stage: Deploy
   displayName: 'Deploy to AKS'
   dependsOn:
@@ -111,7 +109,29 @@ stages:
                 kubectl wait --namespace ingress-nginx \
                   --for=condition=Ready pod \
                   --selector=app.kubernetes.io/component=controller \
-                  --timeout=180s
+                  --timeout=300s
+
+                echo "Waiting for ingress-nginx admission webhook to be ready..."
+                kubectl wait --namespace ingress-nginx \
+                  --for=condition=Available deployment \
+                  --selector=app.kubernetes.io/component=controller \
+                  --timeout=300s
+
+                # Additional wait to ensure webhook service endpoints are ready
+                echo "Verifying admission webhook service has endpoints..."
+                for i in {1..30}; do
+                  ENDPOINTS=$(kubectl get endpoints -n ingress-nginx ingress-nginx-controller-admission -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || echo "")
+                  if [ ! -z "$ENDPOINTS" ]; then
+                    echo "Admission webhook endpoints are ready: $ENDPOINTS"
+                    break
+                  fi
+                  echo "Waiting for admission webhook endpoints... attempt $i/30"
+                  sleep 10
+                done
+
+                # Verify the webhook is actually responding
+                echo "Testing admission webhook connectivity..."
+                kubectl get validatingwebhookconfigurations.admissionregistration.k8s.io ingress-nginx-admission
 
                 echo "Installing cert-manager..."
                 helm repo add jetstack https://charts.jetstack.io
@@ -119,7 +139,13 @@ stages:
                 helm upgrade --install cert-manager jetstack/cert-manager \
                   --namespace cert-manager \
                   --create-namespace \
-                  --set installCRDs=true
+                  --set crds.enabled=true
+
+                echo "Waiting for cert-manager to be ready..."
+                kubectl wait --namespace cert-manager \
+                  --for=condition=Ready pod \
+                  --selector=app.kubernetes.io/name=cert-manager \
+                  --timeout=180s
 
                 echo "Applying letsencrypt-prod ClusterIssuer directly..."
                 kubectl apply -f - <<EOF
