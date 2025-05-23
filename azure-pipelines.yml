@@ -114,9 +114,23 @@ stages:
                   --create-namespace \
                   --set installCRDs=true
 
-                echo "Applying Self-Signed ClusterIssuer..."
-                kubectl apply -f $(Build.SourcesDirectory)/Helm/config/letsencrypt-clusterissuer.yaml
-
+                echo "Applying letsencrypt-prod ClusterIssuer directly..."
+                kubectl apply -f - <<EOF
+                apiVersion: cert-manager.io/v1
+                kind: ClusterIssuer
+                metadata:
+                  name: letsencrypt-prod
+                spec:
+                  acme:
+                    server: https://acme-v02.api.letsencrypt.org/directory
+                    email: vasylbalakym@gmail.com
+                    privateKeySecretRef:
+                      name: letsencrypt-prod
+                    solvers:
+                      - http01:
+                          ingress:
+                            class: nginx
+                EOF
 
                 export HELM_EXPERIMENTAL_OCI=1
                 az acr login --name $(azureContainerRegistry)
@@ -124,13 +138,14 @@ stages:
                 helm pull oci://$(azureContainerRegistry).azurecr.io/helm/bestrong-api:$(tag) --destination $(Agent.TempDirectory)
 
                 helm upgrade --install bestrong-api $(Agent.TempDirectory)/bestrong-api-$(tag).tgz \
-                  --set image.repository=$(azureContainerRegistry).azurecr.io/$(imageRepository) \
-                  --set image.tag=$(tag) \
-                  --set replicaCount=2 \
-                  --set ingress.enabled=true \
-                  --set ingress.host=kjk-s.xyz \          
-                  --set ingress.tls[0].hosts[0]=kjk-s.xyz \
-                  --set ingress.tls[0].secretName=letsencrypt-prod-tls \
-                  --set tls.issuer=letsencrypt-prod \
-                  --namespace default
+                --set image.repository=$(azureContainerRegistry).azurecr.io/$(imageRepository) \
+                --set image.tag=$(tag) \
+                --set replicaCount=2 \
+                --set ingress.enabled=true \
+                --set ingress.host=kjk-s.xyz \
+                --set ingress.tls[0].hosts[0]=kjk-s.xyz \
+                --set ingress.tls[0].secretName=letsencrypt-prod-tls \
+                --set tls.issuer=letsencrypt-prod \
+                --namespace default
+
          
