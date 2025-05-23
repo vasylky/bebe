@@ -92,7 +92,7 @@ stages:
                 kubectl apply -f $(Build.SourcesDirectory)/Helm/config/letsencrypt-clusterissuer.yaml
 
                 
-  - stage: Deploy
+- stage: Deploy
   displayName: 'Deploy to AKS'
   dependsOn:
     - Build
