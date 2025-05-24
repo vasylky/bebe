@@ -13,8 +13,7 @@ ingress:
   enabled: true
   className: nginx
   annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
   hosts:
     - host: kjk-s.xyz
       paths:
@@ -25,19 +24,4 @@ ingress:
       hosts:
         - kjk-s.xyz
 
-certificate:
-  enabled: true
-  name: letsencrypt-prod-tls
-  issuer: letsencrypt-prod
-  secretName: letsencrypt-prod-tls
-  dnsNames:
-    - kjk-s.xyz
-
 resources: {}
-variables:
-  azureContainerRegistry: 'bestrong'
-  azureResourceGroup: 'rg-bestrong'
-  imageRepository: 'bestrong-api'
-  tag: '$(Build.BuildId)'
-  dockerRegistryServiceConnection: 'bestrong-acr'
-  azureRmServiceConnection: 'azure-conn'

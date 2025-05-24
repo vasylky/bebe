@@ -98,6 +98,16 @@ stages:
                 # Get AKS credentials
                 az aks get-credentials -n aks-bestrong -g $(azureResourceGroup)
 
+                # Clean up existing resources
+                echo "Cleaning up existing resources..."
+                helm uninstall bestrong-api --namespace default || true
+                kubectl delete certificate letsencrypt-prod-tls -n default --ignore-not-found
+                kubectl delete certificaterequest --all -n default --ignore-not-found
+                kubectl delete challenge --all -n default --ignore-not-found
+                kubectl delete secret letsencrypt-prod-tls -n default --ignore-not-found
+                kubectl delete secret -l acme.cert-manager.io/http01-solver -n default --ignore-not-found
+                kubectl delete svc -l acme.cert-manager.io/http01-solver -n default --ignore-not-found
+
                 # Clean up existing ingress-nginx resources
                 echo "Cleaning up existing ingress-nginx resources..."
                 helm uninstall ingress-nginx --namespace ingress-nginx || true
@@ -143,7 +153,22 @@ stages:
 
                 # Apply letsencrypt-prod ClusterIssuer
                 echo "Applying letsencrypt-prod ClusterIssuer..."
-                kubectl apply -f $(Build.SourcesDirectory)/config/letsencrypt-clusterissuer.yaml
+                kubectl apply -f - <<EOF
+                apiVersion: cert-manager.io/v1
+                kind: ClusterIssuer
+                metadata:
+                  name: letsencrypt-prod
+                spec:
+                  acme:
+                    server: https://acme-v02.api.letsencrypt.org/directory
+                    email: vasylbalakym@gmail.com
+                    privateKeySecretRef:
+                      name: letsencrypt-prod
+                    solvers:
+                    - http01:
+                        ingress:
+                          class: nginx
+                EOF
 
                 # Wait for ClusterIssuer to be ready
                 echo "Waiting for ClusterIssuer to be ready..."
@@ -156,6 +181,23 @@ stages:
                   echo "Waiting for ClusterIssuer... attempt $i/10"
                   sleep 10
                 done
+
+                # Apply letsencrypt-prod-tls Certificate
+                echo "Applying letsencrypt-prod-tls Certificate..."
+                kubectl apply -f - <<EOF
+                apiVersion: cert-manager.io/v1
+                kind: Certificate
+                metadata:
+                  name: letsencrypt-prod-tls
+                  namespace: default
+                spec:
+                  secretName: letsencrypt-prod-tls
+                  issuerRef:
+                    name: letsencrypt-prod
+                    kind: ClusterIssuer
+                  dnsNames:
+                  - kjk-s.xyz
+                EOF
 
                 # Log in to ACR
                 echo "Logging in to ACR..."
@@ -173,14 +215,12 @@ stages:
                   --set image.tag=$(Build.BuildId) \
                   --set replicaCount=2 \
                   --set ingress.enabled=true \
+                  --set ingress.className=nginx \
                   --set ingress.hosts[0].host=kjk-s.xyz \
+                  --set ingress.hosts[0].paths[0].path=/ \
+                  --set ingress.hosts[0].paths[0].pathType=Prefix \
                   --set ingress.tls[0].hosts[0]=kjk-s.xyz \
                   --set ingress.tls[0].secretName=letsencrypt-prod-tls \
-                  --set certificate.enabled=true \
-                  --set certificate.name=letsencrypt-prod-tls \
-                  --set certificate.issuer=letsencrypt-prod \
-                  --set certificate.secretName=letsencrypt-prod-tls \
-                  --set certificate.dnsNames[0]=kjk-s.xyz \
                   --set ingress.annotations.nginx\.ingress\.kubernetes\.io/ssl-redirect=true \
                   --set ingress.annotations.nginx\.ingress\.kubernetes\.io/force-ssl-redirect=true \
                   --namespace default \
