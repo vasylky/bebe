@@ -1,9 +1,3 @@
-
-trigger:
-  branches:
-    include:
-      - main
-
 variables:
   azureContainerRegistry: 'bestrong'
   azureResourceGroup: 'rg-bestrong'
@@ -11,6 +5,11 @@ variables:
   tag: '$(Build.BuildId)'
   dockerRegistryServiceConnection: 'bestrong-acr'
   azureRmServiceConnection: 'azure-conn'
+
+trigger:
+  branches:
+    include:
+      - main 
 
 stages:
 # Stage 1: Build & Push Docker Image to ACR
@@ -98,16 +97,6 @@ stages:
                 # Get AKS credentials
                 az aks get-credentials -n aks-bestrong -g $(azureResourceGroup)
 
-                # Clean up existing resources
-                echo "Cleaning up existing resources..."
-                helm uninstall bestrong-api --namespace default || true
-                kubectl delete certificate letsencrypt-prod-tls -n default --ignore-not-found
-                kubectl delete certificaterequest --all -n default --ignore-not-found
-                kubectl delete challenge --all -n default --ignore-not-found
-                kubectl delete secret letsencrypt-prod-tls -n default --ignore-not-found
-                kubectl delete secret -l acme.cert-manager.io/http01-solver -n default --ignore-not-found
-                kubectl delete svc -l acme.cert-manager.io/http01-solver -n default --ignore-not-found
-
                 # Clean up existing ingress-nginx resources
                 echo "Cleaning up existing ingress-nginx resources..."
                 helm uninstall ingress-nginx --namespace ingress-nginx || true
@@ -122,10 +111,14 @@ stages:
                   --namespace ingress-nginx \
                   --create-namespace \
                   --set controller.service.type=LoadBalancer \
-                  --set controller.service.externalTrafficPolicy=Local \
                   --set controller.progressDeadlineSeconds=600 \
                   --debug > helm-install.log 2>&1
                 cat helm-install.log
+
+                # Check ingress-nginx deployment status
+                echo "Checking ingress-nginx deployment..."
+                kubectl get deployment -n ingress-nginx ingress-nginx-controller
+                kubectl describe deployment -n ingress-nginx ingress-nginx-controller
 
                 # Wait for ingress-nginx controller pods to be ready
                 echo "Waiting for ingress-nginx controller to be ready..."
@@ -134,6 +127,29 @@ stages:
                   --selector=app.kubernetes.io/component=controller \
                   --timeout=300s
 
+                # Wait for ingress-nginx deployment to be available
+                echo "Waiting for ingress-nginx admission webhook to be ready..."
+                kubectl wait --namespace ingress-nginx \
+                  --for=condition=Available deployment \
+                  --selector=app.kubernetes.io/component=controller \
+                  --timeout=300s
+
+                # Verify admission webhook service endpoints
+                echo "Verifying admission webhook service has endpoints..."
+                for i in {1..10}; do
+                  ENDPOINTS=$(kubectl get endpoints -n ingress-nginx ingress-nginx-controller-admission -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || echo "")
+                  if [ ! -z "$ENDPOINTS" ]; then
+                    echo "Admission webhook endpoints are ready: $ENDPOINTS"
+                    break
+                  fi
+                  echo "Waiting for admission webhook endpoints... attempt $i/10"
+                  sleep 5
+                done
+
+                # Verify webhook connectivity
+                echo "Testing admission webhook connectivity..."
+                kubectl get validatingwebhookconfigurations.admissionregistration.k8s.io ingress-nginx-admission
+
                 # Install cert-manager
                 echo "Installing cert-manager..."
                 helm repo add jetstack https://charts.jetstack.io
@@ -141,8 +157,7 @@ stages:
                 helm upgrade --install cert-manager jetstack/cert-manager \
                   --namespace cert-manager \
                   --create-namespace \
-                  --set installCRDs=true \
-                  --timeout=300s
+                  --set crds.enabled=true
 
                 # Wait for cert-manager to be ready
                 echo "Waiting for cert-manager to be ready..."
@@ -152,7 +167,7 @@ stages:
                   --timeout=180s
 
                 # Apply letsencrypt-prod ClusterIssuer
-                echo "Applying letsencrypt-prod ClusterIssuer..."
+                echo "Applying letsencrypt-prod ClusterIssuer directly..."
                 kubectl apply -f - <<EOF
                 apiVersion: cert-manager.io/v1
                 kind: ClusterIssuer
@@ -170,35 +185,6 @@ stages:
                           class: nginx
                 EOF
 
-                # Wait for ClusterIssuer to be ready
-                echo "Waiting for ClusterIssuer to be ready..."
-                for i in {1..10}; do
-                  STATUS=$(kubectl get clusterissuer letsencrypt-prod -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "")
-                  if [ "$STATUS" = "True" ]; then
-                    echo "ClusterIssuer is ready"
-                    break
-                  fi
-                  echo "Waiting for ClusterIssuer... attempt $i/10"
-                  sleep 10
-                done
-
-                # Apply letsencrypt-prod-tls Certificate
-                echo "Applying letsencrypt-prod-tls Certificate..."
-                kubectl apply -f - <<EOF
-                apiVersion: cert-manager.io/v1
-                kind: Certificate
-                metadata:
-                  name: letsencrypt-prod-tls
-                  namespace: default
-                spec:
-                  secretName: letsencrypt-prod-tls
-                  issuerRef:
-                    name: letsencrypt-prod
-                    kind: ClusterIssuer
-                  dnsNames:
-                  - kjk-s.xyz
-                EOF
-
                 # Log in to ACR
                 echo "Logging in to ACR..."
                 export HELM_EXPERIMENTAL_OCI=1
@@ -206,40 +192,17 @@ stages:
 
                 # Pull Helm chart from ACR
                 echo "Pulling Helm chart from ACR..."
-                helm pull oci://$(azureContainerRegistry).azurecr.io/helm/bestrong-api --version $(Build.BuildId) --destination $(Agent.TempDirectory)
+                helm pull oci://$(azureContainerRegistry).azurecr.io/helm/bestrong-api:$(tag) --destination $(Agent.TempDirectory)
 
                 # Deploy BeStrong API
                 echo "Deploying BeStrong API with Helm..."
-                helm upgrade --install bestrong-api $(Agent.TempDirectory)/bestrong-api-$(Build.BuildId).tgz \
+                helm upgrade --install bestrong-api $(Agent.TempDirectory)/bestrong-api-$(tag).tgz \
                   --set image.repository=$(azureContainerRegistry).azurecr.io/$(imageRepository) \
-                  --set image.tag=$(Build.BuildId) \
+                  --set image.tag=$(tag) \
                   --set replicaCount=2 \
                   --set ingress.enabled=true \
-                  --set ingress.className=nginx \
-                  --set ingress.hosts[0].host=kjk-s.xyz \
-                  --set ingress.hosts[0].paths[0].path=/ \
-                  --set ingress.hosts[0].paths[0].pathType=Prefix \
+                  --set ingress.host=kjk-s.xyz \
                   --set ingress.tls[0].hosts[0]=kjk-s.xyz \
                   --set ingress.tls[0].secretName=letsencrypt-prod-tls \
-                  --set ingress.annotations.nginx\.ingress\.kubernetes\.io/ssl-redirect=true \
-                  --set ingress.annotations.nginx\.ingress\.kubernetes\.io/force-ssl-redirect=true \
-                  --namespace default \
-                  --timeout=600s
-
-                # Wait for certificate to be ready
-                echo "Waiting for certificate to be ready..."
-                for i in {1..10}; do
-                  STATUS=$(kubectl get certificate letsencrypt-prod-tls -n default -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "")
-                  if [ "$STATUS" = "True" ]; then
-                    echo "Certificate is ready"
-                    break
-                  fi
-                  echo "Waiting for certificate... attempt $i/10"
-                  sleep 30
-                done
-
-                # Verify deployment
-                echo "Verifying deployment..."
-                kubectl get pods -n default
-                kubectl get ingress -n default
-                kubectl get certificate -n default
+                  --set tls.issuer=letsencrypt-prod \
+                  --namespace default
