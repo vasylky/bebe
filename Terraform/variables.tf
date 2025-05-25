@@ -19,3 +19,7 @@ variable "subscription_id" {
   type        = string
   sensitive   = true
 }
+
+variable "dns_zone_name" {
+  default = "kjk-s.xyz"
+}

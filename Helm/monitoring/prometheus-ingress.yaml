@@ -1,27 +1,26 @@
-# ingress.yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: bestrong-ingress
-  namespace: default
+  name: prometheus-ingress
+  namespace: monitoring
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     cert-manager.io/issuer-kind: "ClusterIssuer"
     cert-manager.io/issuer: "selfsigned-clusterissuer"
 spec:
-  ingressClassName: nginx  # 👈 Додай оце
+  ingressClassName: nginx
   tls:
     - hosts:
-        - bestrong.20.185.209.18.nip.io
-      secretName: bestrong-tls
+        - prometheus.20.185.209.18.nip.io
+      secretName: prometheus-tls
   rules:
-    - host: bestrong.20.185.209.18.nip.io
+    - host: prometheus.20.185.209.18.nip.io
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: bestrong-api
+                name: monitoring-kube-prometheus-prometheus
                 port:
-                  number: 80
+                  number: 9090

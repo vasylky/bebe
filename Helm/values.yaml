@@ -9,19 +9,20 @@ service:
   type: ClusterIP
   port: 80
 
-ingress:
-  enabled: true
-  className: nginx
-  annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
-  hosts:
-    - host: kjk-s.xyz
-      paths:
-        - path: /
-          pathType: Prefix
-  tls:
-    - secretName: letsencrypt-prod-tls
-      hosts:
-        - kjk-s.xyz
+# ingress:
+#   enabled: true
+#   className: nginx
+#   annotations:
+#     cert-manager.io/cluster-issuer: "letsencrypt-prod"
+#   hosts:
+#     - host: kjk-s.xyz
+#       paths:
+#         - path: /
+#           pathType: Prefix
+#   tls:
+#     - secretName: kjk-s-xyz-tls
+#       hosts:
+#         - kjk-s.xyz
+
 
 resources: {}

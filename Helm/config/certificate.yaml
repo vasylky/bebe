@@ -1,17 +1,19 @@
-
-{{- if .Values.certificate.enabled }}
+# beststrong-cert.yaml
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: {{ .Values.certificate.name }}
-  namespace: {{ .Release.Namespace }}
+  name: bestrong-cert
+  namespace: default
 spec:
-  secretName: {{ .Values.certificate.secretName }}
-  issuerRef:
-    name: {{ .Values.certificate.issuer }}
-    kind: ClusterIssuer
+  secretName: bestrong-tls
+  duration: 2160h 
+  renewBefore: 360h 
+  subject:
+    organizations:
+      - BeStrong
+  commonName: bestrong.20.185.209.18.nip.io
   dnsNames:
-  {{- range .Values.certificate.dnsNames }}
-    - {{ . }}
-  {{- end }}
-{{- end }}
+    - bestrong.20.185.209.18.nip.io
+  issuerRef:
+    name: selfsigned-clusterissuer
+    kind: ClusterIssuer
