@@ -207,19 +207,4 @@ stages:
                   --set tls.issuer=letsencrypt-prod \
                   --namespace default
 
-                echo "Install Fluent Bit in AKS "
-                helm repo add fluent https://fluent.github.io/helm-charts
-                helm repo update
-
-                helm install fluent-bit fluent/fluent-bit \
-                  --namespace kube-system \
-                  --set backend.type=es \
-                  --set backend.es.host=your-elasticsearch-host \ # Зміни на логи для Grafana
-                  --set backend.es.port=9200
-                
-                # Ще можна поставити label якщо ми його використовуємо
-                # kubectl label namespace bestrong logging=enabled
-
-                echo "Configure Fluent Bit Parsers and Filters"
-                kubectl apply -f helm/fluent-bit/templates/configmap.yaml
 
