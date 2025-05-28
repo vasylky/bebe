@@ -1,3 +1,38 @@
+# Report 28.05.25
+Setup and configure FluentBit to collect "BeStrong" API logs.,
+Make the logs from FluentBit available in Grafana
+
+## Step 1: Add Helm repositories
+```
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo update
+```
+## Step 2: Install Loki + Fluent Bit + Grafana
+```
+helm install loki grafana/loki-stack \
+  --namespace logging --create-namespace \
+  --set grafana.enabled=true \
+  --set prometheus.enabled=false \
+  --set fluent-bit.enabled=true \
+  --set loki.enabled=true
+```
+## Step 3: Open Grafana
+```
+minikube service loki-grafana -n logging
+```
+
+Username: admin
+Password: ``` kubectl get secret --namespace logging loki-grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo ```
+
+## Step 4: Go to Explore in Grafana
+
+Select Loki as Data Source
+Start typing: ``` {job="fluent-bit"} ```
+
+## Diagram
+
+![Grafana](./.github/Grafana_diagram.png)
+
 # ASP.NET Core WebApi Sample with HATEOAS, Versioning & Swagger
 
 In this repository I want to give a plain starting point at how to build a WebAPI with ASP.NET Core.
